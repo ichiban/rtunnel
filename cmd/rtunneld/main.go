@@ -19,7 +19,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := http.ListenAndServe(a, &rtunnel.Tunnel{}); err != nil {
+			if err := http.ListenAndServe(a, &rtunnel.Entrance{}); err != nil {
 				log.WithFields(log.Fields{
 					"addr": a,
 					"err":  err,

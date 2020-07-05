@@ -13,44 +13,44 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type Tunnel struct {
+type Entrance struct {
 	Session *yamux.Session
 }
 
-func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (e *Entrance) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodConnect:
-		t.outbound(w, r)
+		e.outbound(w, r)
 	case http.MethodGet:
-		t.inbound(w, r) // TODO: authorize agent
+		e.inbound(w, r) // TODO: authorize exit
 	default:
 		http.Error(w, "", http.StatusMethodNotAllowed)
 	}
 }
 
-func (t *Tunnel) outbound(w http.ResponseWriter, r *http.Request) {
-	if t.Session == nil {
+func (e *Entrance) outbound(w http.ResponseWriter, r *http.Request) {
+	if e.Session == nil {
 		http.Error(w, "", http.StatusNotFound)
 		return
 	}
 
 	log.WithFields(log.Fields{
-		"src":   r.RemoteAddr,
-		"agent": t.Session.RemoteAddr(),
-		"dest":  r.RequestURI,
+		"client": r.RemoteAddr,
+		"exit":   e.Session.RemoteAddr(),
+		"server": r.RequestURI,
 	}).Info("start tunneling")
 	defer log.WithFields(log.Fields{
-		"src":   r.RemoteAddr,
-		"agent": t.Session.RemoteAddr(),
-		"dest":  r.RequestURI,
+		"client": r.RemoteAddr,
+		"exit":   e.Session.RemoteAddr(),
+		"server": r.RequestURI,
 	}).Info("end tunneling")
 
-	in, err := t.Session.OpenStream()
+	in, err := e.Session.OpenStream()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Error("failed to open stream")
-		t.Session = nil
+		e.Session = nil
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
@@ -64,7 +64,7 @@ func (t *Tunnel) outbound(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = out.Close() }()
 
-	r.Header.Add("Forwarded", fmt.Sprintf(`for=%s`, quote(r.RemoteAddr)))
+	r.Header.Set("Client", r.RemoteAddr)
 	if err := r.Write(in); err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -102,15 +102,15 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func (t *Tunnel) inbound(w http.ResponseWriter, r *http.Request) {
+func (e *Entrance) inbound(w http.ResponseWriter, r *http.Request) {
 	log.WithFields(log.Fields{
-		"agent": r.RemoteAddr,
+		"exit": r.RemoteAddr,
 	}).Info("connected")
 	defer log.WithFields(log.Fields{
-		"agent": r.RemoteAddr,
+		"exit": r.RemoteAddr,
 	}).Info("disconnected")
 
-	if t.Session != nil {
+	if e.Session != nil {
 		http.Error(w, "", http.StatusConflict)
 		return
 	}
@@ -132,10 +132,10 @@ func (t *Tunnel) inbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t.Session = s
+	e.Session = s
 
 	<-s.CloseChan()
-	t.Session = nil
+	e.Session = nil
 }
 
 // https://tools.ietf.org/html/rfc7230#section-3.2.6

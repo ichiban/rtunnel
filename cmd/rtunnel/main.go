@@ -11,12 +11,12 @@ func main() {
 	flag.Parse()
 
 	var wg sync.WaitGroup
-	for _, h := range flag.Args() {
-		a := rtunnel.Agent{Tunnel: h}
+	for _, u := range flag.Args() {
+		e := rtunnel.Exit{Entrance: u}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.Run()
+			e.Run()
 		}()
 	}
 	wg.Wait()

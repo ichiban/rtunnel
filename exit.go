@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 
 	"github.com/gorilla/websocket"
 
@@ -14,18 +15,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type Agent struct {
-	Tunnel string
+type Exit struct {
+	Entrance string
 }
 
 var dialer = websocket.Dialer{}
 
-func (a *Agent) Run() {
-	u, err := url.Parse(a.Tunnel)
+func (e *Exit) Run() {
+	u, err := url.Parse(e.Entrance)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"url": a.Tunnel,
-		}).Error("malformed tunnel URL")
+			"entrance": e.Entrance,
+		}).Error("malformed entrance URL")
 		return
 	}
 	switch u.Scheme {
@@ -42,26 +43,26 @@ func (a *Agent) Run() {
 	conn, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"tunnel": a.Tunnel,
-			"err":    err,
-		}).Error("failed to connect to tunnel")
+			"entrance": e.Entrance,
+			"err":      err,
+		}).Error("failed to connect to entrance")
 		return
 	}
 	defer func() { _ = conn.Close() }()
 
 	log.WithFields(log.Fields{
-		"tunnel": a.Tunnel,
+		"entrance": e.Entrance,
 	}).Info("connected")
 	defer log.WithFields(log.Fields{
-		"tunnel": a.Tunnel,
+		"entrance": e.Entrance,
 	}).Info("disconnected")
 
 	c := Conn{base: conn}
 	s, err := yamux.Server(&c, nil)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"tunnel": a.Tunnel,
-			"err":    err,
+			"entrance": e.Entrance,
+			"err":      err,
 		}).Error("failed to create logical server")
 		return
 	}
@@ -72,40 +73,44 @@ func (a *Agent) Run() {
 		if err != nil {
 			if err != io.EOF {
 				log.WithFields(log.Fields{
-					"tunnel": a.Tunnel,
-					"err":    err,
+					"entrance": e.Entrance,
+					"err":      err,
 				}).Error("failed to accept stream")
 			}
 			return
 		}
 
 		go func() {
-			if err := a.handleStream(st); err != nil {
+			if err := e.handleStream(st); err != nil {
 				log.WithFields(log.Fields{
-					"tunnel": a.Tunnel,
-					"err":    err,
+					"entrance": e.Entrance,
+					"err":      err,
 				}).Error("failed to accept stream")
 			}
 		}()
 	}
 }
 
-func (a *Agent) handleStream(out *yamux.Stream) error {
-	dest, err := a.destination(out)
+func (e *Exit) handleStream(out *yamux.Stream) error {
+	s, c, err := e.serverAndClient(out)
 	if err != nil {
 		return err
 	}
 
-	in, err := net.Dial("tcp", dest)
+	in, err := net.Dial("tcp", s)
 	if err != nil {
 		return err
 	}
 
 	log.WithFields(log.Fields{
-		"dest": dest,
+		"client":   c,
+		"entrance": e.Entrance,
+		"server":   s,
 	}).Info("start tunneling")
 	defer log.WithFields(log.Fields{
-		"dest": dest,
+		"client":   c,
+		"entrance": e.Entrance,
+		"server":   s,
 	}).Info("end tunneling")
 
 	Bind(in, out)
@@ -113,22 +118,18 @@ func (a *Agent) handleStream(out *yamux.Stream) error {
 	return nil
 }
 
-func (a *Agent) destination(out *yamux.Stream) (string, error) {
+var forwardedPattern = regexp.MustCompile(`\Afor=(|"")"?(.+)"?\z`)
+
+func (e *Exit) serverAndClient(out *yamux.Stream) (string, string, error) {
 	buf := bufio.NewReader(out)
 	req, err := http.ReadRequest(buf)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"tunnel": a.Tunnel,
-			"err":    err,
+			"entrance": e.Entrance,
+			"err":      err,
 		}).Error("failed to read request")
-		return "", err
+		return "", "", err
 	}
-
-	log.WithFields(log.Fields{
-		"method":    req.Method,
-		"dest":      req.RequestURI,
-		"forwarded": req.Header.Values("Forwarded"),
-	}).Info("req")
 
 	resp := http.Response{
 		ProtoMajor: req.ProtoMajor,
@@ -137,11 +138,11 @@ func (a *Agent) destination(out *yamux.Stream) (string, error) {
 	}
 	if err := resp.Write(out); err != nil {
 		log.WithFields(log.Fields{
-			"tunnel": a.Tunnel,
-			"err":    err,
+			"entrance": e.Entrance,
+			"err":      err,
 		}).Error("failed to write response")
-		return "", err
+		return "", "", err
 	}
 
-	return req.RequestURI, nil
+	return req.RequestURI, req.Header.Get("Client"), nil
 }
