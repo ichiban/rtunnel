@@ -124,6 +124,12 @@ func (a *Agent) destination(out *yamux.Stream) (string, error) {
 		return "", err
 	}
 
+	log.WithFields(log.Fields{
+		"method":    req.Method,
+		"dest":      req.RequestURI,
+		"forwarded": req.Header.Values("Forwarded"),
+	}).Info("req")
+
 	resp := http.Response{
 		ProtoMajor: req.ProtoMajor,
 		ProtoMinor: req.ProtoMinor,

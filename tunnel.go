@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
@@ -34,12 +35,12 @@ func (t *Tunnel) outbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.WithFields(log.Fields{
-		"addr":  r.RemoteAddr,
+		"src":   r.RemoteAddr,
 		"agent": t.Session.RemoteAddr(),
 		"dest":  r.RequestURI,
 	}).Info("start tunneling")
 	defer log.WithFields(log.Fields{
-		"addr":  r.RemoteAddr,
+		"src":   r.RemoteAddr,
 		"agent": t.Session.RemoteAddr(),
 		"dest":  r.RequestURI,
 	}).Info("end tunneling")
@@ -63,6 +64,7 @@ func (t *Tunnel) outbound(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = out.Close() }()
 
+	r.Header.Add("Forwarded", fmt.Sprintf(`for=%s`, quote(r.RemoteAddr)))
 	if err := r.Write(in); err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -134,4 +136,12 @@ func (t *Tunnel) inbound(w http.ResponseWriter, r *http.Request) {
 
 	<-s.CloseChan()
 	t.Session = nil
+}
+
+// https://tools.ietf.org/html/rfc7230#section-3.2.6
+func quote(a string) string {
+	if strings.ContainsAny(a, `(),/:;<=>?@[\]{}`) {
+		return fmt.Sprintf(`"%s"`, a)
+	}
+	return a
 }
