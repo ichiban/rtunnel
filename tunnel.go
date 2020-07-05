@@ -19,7 +19,7 @@ type Tunnel struct {
 func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodConnect:
-		t.outbound(w, r) // TODO: authorize client
+		t.outbound(w, r)
 	case http.MethodGet:
 		t.inbound(w, r) // TODO: authorize agent
 	default:
@@ -29,7 +29,7 @@ func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (t *Tunnel) outbound(w http.ResponseWriter, r *http.Request) {
 	if t.Session == nil {
-		http.Error(w, "", http.StatusServiceUnavailable)
+		http.Error(w, "", http.StatusNotFound)
 		return
 	}
 

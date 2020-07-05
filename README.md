@@ -7,7 +7,7 @@ HTTP tunneling server/client.
 First, spin up some tunnels with `rtunneld` on your server.
 
 ```console
-example.com$ rtunneld 8080 8081 8082
+example.com$ rtunneld :8080 :8081 :8082
 ```
 
 Then, from your laptop, claim one of the tunnels with `rtunnel` to make your laptop the exit for the tunnel.

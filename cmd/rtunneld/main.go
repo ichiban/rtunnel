@@ -15,6 +15,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for _, a := range flag.Args() {
+		a := a
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
